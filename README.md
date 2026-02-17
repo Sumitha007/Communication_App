@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Welcome to your Lovable project
 
 ## Project info
@@ -71,3 +72,25 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+=======
+# Communication App
+
+Real-time video conferencing and collaboration application.
+
+## Features Implemented (Feb 3 2026)
+
+- Backend setup with Express
+- Socket.io integration
+- WebRTC camera access
+- Basic peer connection logic started
+
+## Progress - Feb 4 2026
+
+Frontend UI Completed (Landing, Login, Dashboard, Meeting Room)
+
+Demo Video:
+https://drive.google.com/file/d/1G1d1v96NGKPqAj_RNy0uxfigLXHK5KSm/view?usp=sharing
+
+## Username modified
+
+>>>>>>> ec8da15142277afb0743045f3992eebc84bdd329
