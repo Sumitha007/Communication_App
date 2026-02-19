@@ -85,6 +85,8 @@ const Room = () => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isJoining, setIsJoining] = useState(true);
   const [joinError, setJoinError] = useState<string | null>(null);
+  // Media error state for camera/mic
+  const [mediaError, setMediaError] = useState<string | null>(null);
 
   // Join meeting and setup real-time listener
   useEffect(() => {
@@ -159,37 +161,26 @@ const Room = () => {
       console.log('No roomId, skipping WebRTC init');
       return;
     }
-
-    // Wait for refs to be ready
     if (!localVideoRef.current || !remoteVideoRef.current) {
       console.log('Video refs not ready yet');
       return;
     }
-
     console.log('🚀 Starting WebRTC initialization...');
-
     const initWebRTC = async () => {
       try {
-        // Start camera
         await startLocalStream(localVideoRef.current!);
-
-        // Small delay to ensure stream is ready
         await new Promise(resolve => setTimeout(resolve, 300));
-
-        // Try joining existing call first
         try {
           console.log('🔗 Attempting to join existing call...');
           await joinCall(roomId, remoteVideoRef.current!);
           console.log('✅ Joined existing call');
         } catch (error: any) {
-          // If no call exists -> create one (host)
           console.log('🆕 No existing call, creating new one...');
           try {
             await createCall(roomId, remoteVideoRef.current!);
             console.log('✅ Call created successfully');
           } catch (createErr: any) {
             console.error('❌ Failed to create call:', createErr);
-            // Don't throw - camera still works without signaling
             if (createErr.message?.includes('Firestore permission')) {
               toast({
                 variant: 'destructive',
@@ -200,10 +191,10 @@ const Room = () => {
             }
           }
         }
-
+        setMediaError(null);
       } catch (err: any) {
         console.error('❌ WebRTC initialization error:', err);
-        
+        setMediaError(err.message || 'Failed to access camera. Please check permissions.');
         toast({
           variant: 'destructive',
           title: 'Camera Error',
@@ -212,13 +203,11 @@ const Room = () => {
         });
       }
     };
-
-    // Delay WebRTC init slightly to ensure meeting is joined first
     const timer = setTimeout(initWebRTC, 1000);
     return () => {
       clearTimeout(timer);
       console.log('🧹 Cleaning up WebRTC...');
-      hangUp(); // Stop camera and cleanup
+      hangUp();
     };
   }, [roomId, toast]);
 
@@ -314,43 +303,56 @@ const Room = () => {
     }
   };
 
-  // Show loading state while joining
-  if (isJoining) {
-    return (
-      <div className="h-screen bg-foreground flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin mx-auto mb-4" />
-          <p className="text-primary-foreground text-lg">Joining meeting...</p>
-        </div>
-      </div>
-    );
-  }
 
-  // Show error state
-  if (joinError) {
-    return (
-      <div className="h-screen bg-foreground flex items-center justify-center p-4">
-        <div className="max-w-md w-full">
-          <Alert variant="destructive">
-            <AlertCircle className="h-5 w-5" />
-            <AlertDescription className="text-base ml-2">
-              {joinError}
-            </AlertDescription>
-          </Alert>
-          <Button 
-            variant="outline" 
-            onClick={() => navigate('/dashboard')}
-            className="w-full mt-4 bg-primary-foreground"
-          >
-            Return to Dashboard
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Always render the main UI, but overlay loading/error if needed
 
   return (
-    <div className="h-screen bg-foreground flex">
+    <div className="h-screen bg-foreground flex flex-col relative">
+      {/* Overlay loading or error if joining or error */}
+      {(isJoining || joinError || mediaError) && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/80 text-white pointer-events-auto">
+          {isJoining && (
+            <>
+              <div className="w-16 h-16 rounded-full border-4 border-primary border-t-transparent animate-spin mx-auto mb-4" />
+              <p className="text-primary-foreground text-lg">Joining meeting...</p>
+            </>
+          )}
+          {joinError && (
+            <div className="max-w-md w-full">
+              <Alert variant="destructive">
+                <AlertCircle className="h-5 w-5" />
+                <AlertDescription className="text-base ml-2">
+                  {joinError}
+                </AlertDescription>
+              </Alert>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/dashboard')}
+                className="w-full mt-4 bg-primary-foreground"
+              >
+                Return to Dashboard
+              </Button>
+            </div>
+          )}
+          {mediaError && !isJoining && !joinError && (
+            <div className="max-w-md w-full">
+              <Alert variant="destructive">
+                <AlertCircle className="h-5 w-5" />
+                <AlertDescription className="text-base ml-2">
+                  {mediaError}
+                </AlertDescription>
+              </Alert>
+              <Button 
+                variant="outline" 
+                onClick={() => window.location.reload()}
+                className="w-full mt-4 bg-primary-foreground"
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
       {/* Main Video Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -433,7 +435,7 @@ const Room = () => {
             </div>
             
             {/* Self Video (Picture-in-Picture) */}
-            <div className="absolute bottom-4 right-4 w-48 h-36 rounded-xl overflow-hidden bg-gray-800 border-2 border-white/10 shadow-2xl">
+            <div className="absolute right-4 bottom-24 w-48 h-36 rounded-xl overflow-hidden bg-gray-800 border-2 border-white/10 shadow-2xl">
               <video
                 ref={localVideoRef}
                 autoPlay
@@ -461,8 +463,8 @@ const Room = () => {
           </div>
         </div>
 
-        {/* Control Bar */}
-        <div className="h-20 flex items-center justify-center gap-3 bg-gray-900/95 backdrop-blur-lg shadow-2xl border-t border-gray-800 relative z-50">
+        {/* Control Bar: Always visible, fixed at bottom */}
+        <div className="h-20 flex items-center justify-center gap-3 bg-gray-900/95 backdrop-blur-lg shadow-2xl border-t border-gray-800 fixed left-0 right-0 bottom-0 z-[60] w-full">
           {/* Emoji Picker Popup */}
           {showEmojiPicker && (
             <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 bg-card border border-border rounded-2xl shadow-2xl p-4 animate-fade-in">
