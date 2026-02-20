@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/firebase';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -87,6 +89,22 @@ const Room = () => {
   const [joinError, setJoinError] = useState<string | null>(null);
   // Media error state for camera/mic
   const [mediaError, setMediaError] = useState<string | null>(null);
+
+  // Real-time chat listener
+  useEffect(() => {
+    if (!roomId) return;
+    const q = query(collection(db, 'meetings', roomId, 'messages'), orderBy('timestamp'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: ChatMessage[] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        sender: doc.data().sender,
+        message: doc.data().message,
+        time: doc.data().time,
+      }));
+      setMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, [roomId]);
 
   // Join meeting and setup real-time listener
   useEffect(() => {
@@ -290,16 +308,23 @@ const Room = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (chatMessage.trim()) {
-      setMessages([...messages, {
-        id: Date.now().toString(),
-        sender: 'You',
+    if (!chatMessage.trim() || !user || !roomId) return;
+    try {
+      await addDoc(collection(db, 'meetings', roomId, 'messages'), {
+        sender: user.name || 'Unknown',
         message: chatMessage,
-        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      }]);
+        time: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+        timestamp: serverTimestamp(),
+      });
       setChatMessage('');
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        title: 'Chat Error',
+        description: 'Failed to send message.',
+      });
     }
   };
 
@@ -362,11 +387,16 @@ const Room = () => {
               <VideoIcon className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-sm font-medium text-primary-foreground">Meeting Room</h1>
+              <h1 className="text-sm font-medium text-primary-foreground flex items-center gap-2">
+                Meeting Room
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold ml-2">
+                  <Users className="w-4 h-4 mr-1" />
+                  {participants.length} member{participants.length === 1 ? '' : 's'}
+                </span>
+              </h1>
               <p className="text-xs text-primary-foreground/60">{roomId}</p>
             </div>
           </div>
-          
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
